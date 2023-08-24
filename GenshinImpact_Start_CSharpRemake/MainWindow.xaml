@@ -12,8 +12,8 @@
             <TextBlock x:Name="GameProcessStatus" Text="获取中"></TextBlock>
         </StackPanel>
         <StackPanel Margin="10, 10, 0, 0" Orientation="Horizontal">
-            <TextBlock Text="屏幕白色占比: "></TextBlock>
-            <TextBlock x:Name="ScreenWhitePercentage" Text="获取中"></TextBlock>
+            <TextBlock x:Name="ScreenColorPercentageLabel" Text="屏幕白色占比: "></TextBlock>
+            <TextBlock x:Name="ScreenColorPercentage" Text="获取中"></TextBlock>
         </StackPanel>
     </StackPanel>
 </Window>

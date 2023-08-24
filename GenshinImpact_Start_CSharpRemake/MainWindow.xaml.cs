@@ -28,14 +28,21 @@ public partial class MainWindow : Window
     public bool GameRunning;
     public double WhitePercentage;
 
-    public string? RunningPath;
-    public int? TargetGame;
-    public double? DetectPercent;
-
+    public string ExecutablePath;
+    public string ProcessName;
+    public int TransitionDuration;
+    public int DetectColor;
+    public double DetectPercent;
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     public MainWindow()
     {
@@ -50,29 +57,37 @@ public partial class MainWindow : Window
             using var file = File.OpenText(Path.Combine(Environment.CurrentDirectory, "config.json"));
             using var reader = new JsonTextReader(file);
             var o = (JObject)JToken.ReadFrom(reader);
-            if (o["path"] != null && o["mode"] != null && o["percent"] != null)
+            if (o["executablePath"] != null && o["processName"] != null && o["transitionDuration"] != null && o["detectColor"] != null && o["colorPercent"] != null)
             {
-                RunningPath = o["path"]?.ToString();
-                TargetGame = o["mode"]?.Value<int>();
-                DetectPercent = o["percent"]?.Value<double>();
+                ExecutablePath = o["executablePath"]?.ToString();
+                ProcessName = o["processName"]?.ToString();
+                TransitionDuration = (int)o["transitionDuration"]?.Value<int>();
+                DetectColor = (int)o["detectColor"]?.Value<int>();
+                DetectPercent = (double)o["colorPercent"]?.Value<double>();
             }
 
-            if (!File.Exists(RunningPath))
+            if (!File.Exists(ExecutablePath))
             {
                 MessageBox.Show("非法的执行路径, 请在config.json手动设置");
                 Environment.Exit(0);
             }
 
-            Title = TargetGame switch
+            ScreenColorPercentageLabel.Text = DetectColor switch
             {
-                0 => "Genshin Impact Start - CSharp Remake",
-                1 => "Star Rail Start - CSharp Remake",
-                _ => "Genshin Impact Start - CSharp Remake"
+                0 => "屏幕黑色占比: ",
+                1 => "屏幕白色占比: ",
+                _ => "屏幕白色占比: "
             };
+
+            if (TransitionDuration is < 3 or > 10)
+            {
+                MessageBox.Show("TransitionDuration 参数不合理，有效范围为3-10，请检查config.json");
+                Environment.Exit(0);
+            }
 
             if (DetectPercent is < 85 or > 100)
             {
-                MessageBox.Show("占比不合理，有效范围为85-100，请检查config.json");
+                MessageBox.Show("DetectPercent 参数不合理，有效范围为85-100，请检查config.json");
                 Environment.Exit(0);
             }
         }
@@ -95,13 +110,7 @@ public partial class MainWindow : Window
 
     public void ScanGameRunning()
     {
-        var targetProcess = TargetGame switch
-        {
-            0 => "YuanShen",
-            1 => "StarRail",
-            _ => "YuanShen"
-        };
-        GameRunning = Process.GetProcessesByName(targetProcess).Length == 1;
+        GameRunning = Process.GetProcessesByName(ProcessName).Length == 1;
         Application.Current.Dispatcher.Invoke(() =>
         {
             GameProcessStatus.Text = GameRunning ? "运行中" : "未运行";
@@ -118,7 +127,7 @@ public partial class MainWindow : Window
         WhitePercentage = CalculateColorPercentage(screenCapture);
         Application.Current.Dispatcher.Invoke(() =>
         {
-            ScreenWhitePercentage.Text = WhitePercentage.ToString("F2") + "%";
+            ScreenColorPercentage.Text = WhitePercentage.ToString("F2") + "%";
         });
     }
 
@@ -132,7 +141,7 @@ public partial class MainWindow : Window
             for (var y = 0; y < image.Height; y++)
             {
                 var pixelColor = image.GetPixel(x, y);
-                if (IsWhite(pixelColor))
+                if (IsTargetColor(pixelColor))
                 {
                     whitePixelCount++;
                 }
@@ -142,16 +151,13 @@ public partial class MainWindow : Window
         return (double)whitePixelCount / totalPixelCount * 100.0;
     }
 
-    private bool IsWhite(Color color)
+    private bool IsTargetColor(Color color)
     {
-        if (TargetGame != 1)
+        if (DetectColor != 0)
         {
             return color is { R: > 250, G: > 250, B: > 250 };
         }
-        else
-        {
-            return color is { R: < 20, G: < 20, B: < 20 };
-        }
+        return color is { R: < 20, G: < 20, B: < 20 };
     }
 
     public void WaitForStart()
@@ -161,15 +167,30 @@ public partial class MainWindow : Window
             ScanGameRunning();
             ScanScreenColor();
             if (GameRunning || !(WhitePercentage >= DetectPercent)) continue;
+            var newThread = new Thread(() =>
+            {
+                var blankWindow = new BlankWindow(TransitionDuration, DetectColor);
+                blankWindow.Dispatcher.Invoke(() =>
+                {
+                    blankWindow.Show();
+                    blankWindow.Focus();
+                    blankWindow.BlankGrid.Focus();
+                });
+                
+                System.Windows.Threading.Dispatcher.Run();
+            });
+            newThread.SetApartmentState(ApartmentState.STA);
+            newThread.Start();
+
             var info = new ProcessStartInfo
             {
-                FileName = RunningPath
+                FileName = ExecutablePath
             };
             var process = new Process();
             process.StartInfo = info;
             if (process.Start())
             {
-                Thread.Sleep(5000);
+                Thread.Sleep(TransitionDuration * 1000);
                 SetForegroundWindow(process.MainWindowHandle);
                 Environment.Exit(0);
             }

@@ -1,5 +1,7 @@
 ﻿{
-  "path": "",
-  "mode": 0,
-  "percent": 90
+  "executablePath": "",
+  "processName": "YuanShen",
+  "transitionDuration": 5,
+  "detectColor": 1,
+  "colorPercent": 90
 }
